@@ -1,5 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
 
+// Backendin osoite luetaan Viten ympäristömuuttujasta (VITE_API_URL).
+// Kehityksessä oletus on tyhjä, jolloin /api proxytetään vite.config.js:n kautta.
+// Tuotannossa aseta VITE_API_URL = backendin julkinen osoite.
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tämä komponentti käyttää alla olevaa MOCK_TAULUT-dataa, jotta sen voi ajaa
 // heti ilman backendiä. Kun haluat kytkeä oikean datan, korvaa mock-haut
@@ -908,11 +913,6 @@ function RakenneTab({ tauluNimi }) {
 
 // ─── API: oikea data backendistä ─────────────────────────────────────────────
 
-// Backendin osoite luetaan Viten ympäristömuuttujasta (VITE_API_URL).
-// Kehityksessä oletus on tyhjä, jolloin /api proxytetään vite.config.js:n kautta.
-// Tuotannossa aseta VITE_API_URL = backendin julkinen osoite.
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
-
 function KayttajatTab() {
   const [kayttajat, setKayttajat] = useState([]);
   const [lataa, setLataa]         = useState(true);
@@ -1025,16 +1025,235 @@ function TreeNode({ node, activeTaulu, onSelect, depth = 0 }) {
   );
 }
 
+// ─── SarakeHallintaTab: oikeiden sarakkeiden hallinta backendistä ─────────────
+
+const TYYPIT = ["text", "integer", "decimal", "date", "boolean", "viittaus"];
+
+function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
+  const [sarakkeet, setSarakkeet] = useState([]);
+  const [lataa, setLataa]   = useState(true);
+  const [virhe, setVirhe]   = useState(null);
+  const [lomakeAuki, setLomakeAuki] = useState(false);
+
+  // Uuden sarakkeen lomakkeen tila
+  const [nimi, setNimi]               = useState("");
+  const [tietotyyppi, setTietotyyppi] = useState("text");
+  const [pakollinen, setPakollinen]   = useState(false);
+  const [viittausTauluId, setViittausTauluId] = useState("");
+  const [tallentaa, setTallentaa]     = useState(false);
+
+  const haeSarakkeet = useCallback(async () => {
+    setLataa(true);
+    setVirhe(null);
+    try {
+      const res = await fetch(`${API_BASE}/taulut/${taulu.id}/sarakkeet`);
+      if (!res.ok) throw new Error(`Palvelin vastasi ${res.status}`);
+      setSarakkeet(await res.json());
+    } catch (e) {
+      setVirhe(e.message);
+    } finally {
+      setLataa(false);
+    }
+  }, [taulu.id]);
+
+  useEffect(() => { haeSarakkeet(); }, [haeSarakkeet]);
+
+  const tyhjennaLomake = () => {
+    setNimi(""); setTietotyyppi("text"); setPakollinen(false); setViittausTauluId("");
+  };
+
+  const lisaaSarake = async () => {
+    if (!nimi.trim()) return;
+    setTallentaa(true);
+    setVirhe(null);
+    try {
+      const body = {
+        nimi: nimi.trim(),
+        tietotyyppi,
+        pakollinen,
+        viittaus_taulu_id: tietotyyppi === "viittaus" ? Number(viittausTauluId) : null,
+      };
+      const res = await fetch(`${API_BASE}/taulut/${taulu.id}/sarakkeet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const v = await res.json().catch(() => ({}));
+        throw new Error(v.detail ? JSON.stringify(v.detail) : `Palvelin vastasi ${res.status}`);
+      }
+      tyhjennaLomake();
+      setLomakeAuki(false);
+      await haeSarakkeet();
+      onMuutos?.();
+    } catch (e) {
+      setVirhe(e.message);
+    } finally {
+      setTallentaa(false);
+    }
+  };
+
+  const poistaSarake = async (sarake) => {
+    if (!confirm(`Poistetaanko sarake "${sarake.nimi}"?`)) return;
+    setVirhe(null);
+    try {
+      const res = await fetch(`${API_BASE}/taulut/${taulu.id}/sarakkeet/${sarake.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok && res.status !== 204) throw new Error(`Palvelin vastasi ${res.status}`);
+      await haeSarakkeet();
+      onMuutos?.();
+    } catch (e) {
+      setVirhe(e.message);
+    }
+  };
+
+  const tauluNimellaId = (id) => kaikkiTaulut.find(t => t.id === id)?.nimi ?? `#${id}`;
+
+  return (
+    <div className="sarake-list">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <button className="btn-ghost" onClick={haeSarakkeet}>↻ Päivitä</button>
+        <button className="btn-primary" onClick={() => setLomakeAuki(o => !o)}>
+          {lomakeAuki ? "Peruuta" : "+ Lisää sarake"}
+        </button>
+      </div>
+
+      {virhe && (
+        <div className="empty-state" style={{ color: "var(--red)", textAlign: "left", padding: "8px 0" }}>
+          Virhe: {virhe}
+        </div>
+      )}
+
+      {lomakeAuki && (
+        <div className="sarake-row" style={{ flexWrap: "wrap", gap: 12, padding: 16 }}>
+          <input
+            className="search-box" placeholder="Sarakkeen nimi" value={nimi}
+            onChange={e => setNimi(e.target.value)} style={{ width: 200 }}
+          />
+          <select className="search-box" value={tietotyyppi}
+            onChange={e => setTietotyyppi(e.target.value)} style={{ width: 130 }}>
+            {TYYPIT.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          {tietotyyppi === "viittaus" && (
+            <select className="search-box" value={viittausTauluId}
+              onChange={e => setViittausTauluId(e.target.value)} style={{ width: 180 }}>
+              <option value="">— valitse kohde —</option>
+              {kaikkiTaulut.filter(t => t.id !== taulu.id).map(t => (
+                <option key={t.id} value={t.id}>{t.nimi}</option>
+              ))}
+            </select>
+          )}
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text2)" }}>
+            <input type="checkbox" checked={pakollinen} onChange={e => setPakollinen(e.target.checked)} />
+            Pakollinen
+          </label>
+          <button className="btn-primary" onClick={lisaaSarake}
+            disabled={tallentaa || !nimi.trim() || (tietotyyppi === "viittaus" && !viittausTauluId)}>
+            {tallentaa ? "Tallennetaan…" : "Tallenna"}
+          </button>
+        </div>
+      )}
+
+      {lataa && <div className="empty-state">Ladataan…</div>}
+      {!lataa && sarakkeet.length === 0 && (
+        <div className="empty-state">Ei vielä sarakkeita — lisää ensimmäinen yltä.</div>
+      )}
+      {!lataa && sarakkeet.map((s, i) => (
+        <div className="sarake-row" key={s.id}>
+          <span className="sarake-num">{i + 1}</span>
+          <span className="sarake-nimi">{s.nimi}</span>
+          <span className={typeBadgeClass(s.tietotyyppi)}>{s.tietotyyppi}</span>
+          {s.tietotyyppi === "viittaus" && s.viittaus_taulu_id && (
+            <span style={{ fontSize: 12, color: "var(--amber)" }}>→ {tauluNimellaId(s.viittaus_taulu_id)}</span>
+          )}
+          {s.pakollinen && <span className="tag tag-gray">pakollinen</span>}
+          <span style={{ flex: 1 }}></span>
+          <button className="action-btn" style={{ color: "var(--red)" }} onClick={() => poistaSarake(s)}>🗑</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [activeTaulu, setActiveTaulu] = useState("Tilaukset");
-  const [activeTab,   setActiveTab]   = useState("rivit");
+  // Oikeat taulut backendistä
+  const [taulut, setTaulut]         = useState([]);
+  const [lataaTaulut, setLataa]     = useState(true);
+  const [tauluVirhe, setTauluVirhe] = useState(null);
 
+  // Valittu näkymä: taulu-id (numero), tai "__kayttajat__"
+  const [valinta, setValinta]       = useState(null);
+  const [activeTab, setActiveTab]   = useState("sarakkeet");
+
+  // Uuden taulun luonti
+  const [uusiAuki, setUusiAuki]     = useState(false);
+  const [uusiNimi, setUusiNimi]     = useState("");
+  const [uusiKuvaus, setUusiKuvaus] = useState("");
+  const [tallentaa, setTallentaa]   = useState(false);
+
+  const haeTaulut = useCallback(async () => {
+    setLataa(true);
+    setTauluVirhe(null);
+    try {
+      const res = await fetch(`${API_BASE}/taulut`);
+      if (!res.ok) throw new Error(`Palvelin vastasi ${res.status}`);
+      const data = await res.json();
+      setTaulut(data);
+      // Valitse ensimmäinen taulu jos mitään ei ole valittu
+      setValinta(v => (v === null && data.length > 0 ? data[0].id : v));
+    } catch (e) {
+      setTauluVirhe(e.message);
+    } finally {
+      setLataa(false);
+    }
+  }, []);
+
+  useEffect(() => { haeTaulut(); }, [haeTaulut]);
+
+  const luoTaulu = async () => {
+    if (!uusiNimi.trim()) return;
+    setTallentaa(true);
+    try {
+      const res = await fetch(`${API_BASE}/taulut`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nimi: uusiNimi.trim(), kuvaus: uusiKuvaus.trim() || null }),
+      });
+      if (!res.ok) {
+        const v = await res.json().catch(() => ({}));
+        throw new Error(v.detail ? JSON.stringify(v.detail) : `Palvelin vastasi ${res.status}`);
+      }
+      const luotu = await res.json();
+      setUusiNimi(""); setUusiKuvaus(""); setUusiAuki(false);
+      await haeTaulut();
+      setValinta(luotu.id);
+      setActiveTab("sarakkeet");
+    } catch (e) {
+      setTauluVirhe(e.message);
+    } finally {
+      setTallentaa(false);
+    }
+  };
+
+  const poistaTaulu = async (taulu) => {
+    if (!confirm(`Poistetaanko taulu "${taulu.nimi}" ja kaikki sen sarakkeet?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/taulut/${taulu.id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error(`Palvelin vastasi ${res.status}`);
+      await haeTaulut();
+      setValinta(null);
+    } catch (e) {
+      setTauluVirhe(e.message);
+    }
+  };
+
+  const valittuTaulu = taulut.find(t => t.id === valinta);
   const tabs = [
-    { id: "rivit",    label: "Rivit" },
-    { id: "sarakkeet",label: "Sarakkeet" },
-    { id: "rakenne",  label: "Rakenne" },
+    { id: "sarakkeet", label: "Sarakkeet" },
+    { id: "rivit",     label: "Rivit" },
   ];
 
   return (
@@ -1047,31 +1266,54 @@ export default function App() {
           <span className="topbar-logo">REKISTERI</span>
           <div className="topbar-sep"></div>
           <span className="topbar-title">Dynaaminen rekisterinhallinta</span>
-          <button className="topbar-btn">+ Uusi taulu</button>
+          <button className="topbar-btn" onClick={() => setUusiAuki(o => !o)}>+ Uusi taulu</button>
         </div>
 
         {/* Sidebar */}
         <div className="sidebar">
           <div className="sidebar-section">Rekisterit</div>
-          {MOCK_TREE.map(node => (
-            <TreeNode
-              key={node.id}
-              node={node}
-              activeTaulu={activeTaulu}
-              onSelect={(nimi) => { setActiveTaulu(nimi); setActiveTab("rivit"); }}
-            />
+
+          {lataaTaulut && <div className="empty-state" style={{ padding: 16 }}>Ladataan…</div>}
+          {tauluVirhe && (
+            <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--red)" }}>
+              {tauluVirhe}
+            </div>
+          )}
+          {!lataaTaulut && taulut.length === 0 && (
+            <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--text3)" }}>
+              Ei tauluja vielä
+            </div>
+          )}
+          {taulut.map(t => (
+            <div
+              key={t.id}
+              className={`tree-item${valinta === t.id ? " active" : ""}`}
+              style={{ paddingLeft: 12 }}
+              onClick={() => { setValinta(t.id); setActiveTab("sarakkeet"); }}
+            >
+              <span>📋</span>
+              <span>{t.nimi}</span>
+            </div>
           ))}
-          <div style={{ padding: "12px 12px 0" }}>
-            <button className="btn-sm" style={{ width: "100%", justifyContent: "center" }}>
-              + Uusi kansio
-            </button>
-          </div>
+
+          {uusiAuki && (
+            <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+              <input className="search-box" placeholder="Taulun nimi" value={uusiNimi}
+                onChange={e => setUusiNimi(e.target.value)} style={{ width: "100%" }} />
+              <input className="search-box" placeholder="Kuvaus (valinn.)" value={uusiKuvaus}
+                onChange={e => setUusiKuvaus(e.target.value)} style={{ width: "100%" }} />
+              <button className="btn-primary" onClick={luoTaulu}
+                disabled={tallentaa || !uusiNimi.trim()} style={{ marginLeft: 0 }}>
+                {tallentaa ? "Luodaan…" : "Luo taulu"}
+              </button>
+            </div>
+          )}
 
           <div className="sidebar-section" style={{ marginTop: 16 }}>Järjestelmä</div>
           <div
-            className={`tree-item${activeTaulu === "__kayttajat__" ? " active" : ""}`}
+            className={`tree-item${valinta === "__kayttajat__" ? " active" : ""}`}
             style={{ paddingLeft: 12 }}
-            onClick={() => setActiveTaulu("__kayttajat__")}
+            onClick={() => setValinta("__kayttajat__")}
           >
             <span>👤</span>
             <span>Käyttäjät</span>
@@ -1080,7 +1322,7 @@ export default function App() {
 
         {/* Main */}
         <div className="main">
-          {activeTaulu === "__kayttajat__" ? (
+          {valinta === "__kayttajat__" ? (
             <>
               <div className="view-header">
                 <span style={{ fontSize: 20 }}>👤</span>
@@ -1089,34 +1331,40 @@ export default function App() {
               </div>
               <KayttajatTab />
             </>
+          ) : valittuTaulu ? (
+            <>
+              <div className="view-header">
+                <span style={{ fontSize: 20 }}>📋</span>
+                <span className="view-title">{valittuTaulu.nimi}</span>
+                <span className="view-subtitle">{valittuTaulu.kuvaus || "ei kuvausta"}</span>
+                <span className="view-spacer" />
+                <button className="btn-ghost" style={{ color: "var(--red)" }}
+                  onClick={() => poistaTaulu(valittuTaulu)}>Poista taulu</button>
+              </div>
+
+              <div className="tabs">
+                {tabs.map(t => (
+                  <button key={t.id} className={`tab${activeTab === t.id ? " active" : ""}`}
+                    onClick={() => setActiveTab(t.id)}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {activeTab === "sarakkeet" && (
+                <SarakeHallintaTab taulu={valittuTaulu} kaikkiTaulut={taulut} onMuutos={haeTaulut} />
+              )}
+              {activeTab === "rivit" && (
+                <div className="empty-state">
+                  Rividata ei ole vielä käytössä — tämä tulee seuraavassa vaiheessa
+                  (rivi/arvo-päätepisteet).
+                </div>
+              )}
+            </>
           ) : (
-          <>
-          <div className="view-header">
-            <span style={{ fontSize: 20 }}>
-              {MOCK_TREE.flatMap(n => n.lapset ?? []).find(n => n.nimi === activeTaulu)?.ikoni ?? "📋"}
-            </span>
-            <span className="view-title">{activeTaulu}</span>
-            <span className="view-subtitle">
-              {(MOCK_TAULUT[activeTaulu]?.rivit ?? []).length} riviä
-            </span>
-          </div>
-
-          <div className="tabs">
-            {tabs.map(t => (
-              <button
-                key={t.id}
-                className={`tab${activeTab === t.id ? " active" : ""}`}
-                onClick={() => setActiveTab(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === "rivit"     && <RivitTab     tauluNimi={activeTaulu} />}
-          {activeTab === "sarakkeet" && <SarakkeetTab tauluNimi={activeTaulu} />}
-          {activeTab === "rakenne"   && <RakenneTab   tauluNimi={activeTaulu} />}
-          </>
+            <div className="empty-state" style={{ marginTop: 60 }}>
+              Valitse taulu vasemmalta tai luo uusi “+ Uusi taulu” -painikkeella.
+            </div>
           )}
         </div>
       </div>
