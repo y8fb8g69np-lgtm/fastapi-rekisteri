@@ -22,6 +22,7 @@ class Taulu(Base):
         back_populates="taulu",
         cascade="all, delete-orphan",
         order_by="Sarake.jarjestys",
+        foreign_keys="Sarake.taulu_id",        
     )
 
 
