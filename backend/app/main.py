@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db.session import Base, engine
 from app.models import user as _user_model  # noqa: F401  (rekisteröi mallin Baseen)
-from app.routers import users
+from app.models import rekisteri as _rekisteri_model  # noqa: F401  (rekisteröi mallit Baseen)
+from app.routers import rekisteri, users
 
 settings = get_settings()
 
@@ -25,7 +26,7 @@ app = FastAPI(title=settings.api_title, version=settings.api_version, lifespan=l
 # Tuotannossa korvaa allow_origins omalla domainilla.
 app.add_middleware(
     CORSMiddleware,
-	allow_origins=settings.cors_origins_list,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,3 +44,4 @@ def terveys():
 
 
 app.include_router(users.router)
+app.include_router(rekisteri.router)
