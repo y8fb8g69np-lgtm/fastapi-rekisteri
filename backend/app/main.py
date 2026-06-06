@@ -7,7 +7,7 @@ from app.config import get_settings
 from app.db.session import Base, engine
 from app.models import user as _user_model  # noqa: F401  (rekisteröi mallin Baseen)
 from app.models import rekisteri as _rekisteri_model  # noqa: F401  (rekisteröi mallit Baseen)
-from app.routers import rekisteri, users
+from app.routers import rekisteri, rivi, users
 
 settings = get_settings()
 
@@ -45,3 +45,4 @@ def terveys():
 
 app.include_router(users.router)
 app.include_router(rekisteri.router)
+app.include_router(rivi.router)
