@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tämä komponentti käyttää alla olevaa MOCK_TAULUT-dataa, jotta sen voi ajaa
@@ -906,6 +906,92 @@ function RakenneTab({ tauluNimi }) {
   );
 }
 
+// ─── API: oikea data backendistä ─────────────────────────────────────────────
+
+// Backendin osoite luetaan Viten ympäristömuuttujasta (VITE_API_URL).
+// Kehityksessä oletus on tyhjä, jolloin /api proxytetään vite.config.js:n kautta.
+// Tuotannossa aseta VITE_API_URL = backendin julkinen osoite.
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
+
+function KayttajatTab() {
+  const [kayttajat, setKayttajat] = useState([]);
+  const [lataa, setLataa]         = useState(true);
+  const [virhe, setVirhe]         = useState(null);
+
+  const haeKayttajat = useCallback(async () => {
+    setLataa(true);
+    setVirhe(null);
+    try {
+      const res = await fetch(`${API_BASE}/kayttajat`);
+      if (!res.ok) throw new Error(`Palvelin vastasi ${res.status}`);
+      setKayttajat(await res.json());
+    } catch (e) {
+      setVirhe(e.message);
+    } finally {
+      setLataa(false);
+    }
+  }, []);
+
+  // Hae kerran kun näkymä avataan
+  useEffect(() => {
+    haeKayttajat();
+  }, [haeKayttajat]);
+
+  return (
+    <>
+      <div className="toolbar">
+        <button className="btn-ghost" onClick={haeKayttajat}>↻ Päivitä</button>
+        <span className="view-subtitle" style={{ marginLeft: 8 }}>
+          {API_BASE || "(proxy /api)"}
+        </span>
+      </div>
+      <div className="table-wrap">
+        {lataa && <div className="empty-state">Ladataan…</div>}
+        {virhe && (
+          <div className="empty-state" style={{ color: "var(--red)" }}>
+            Virhe haettaessa käyttäjiä: {virhe}
+          </div>
+        )}
+        {!lataa && !virhe && kayttajat.length === 0 && (
+          <div className="empty-state">Ei käyttäjiä</div>
+        )}
+        {!lataa && !virhe && kayttajat.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Käyttäjätunnus</th>
+                <th>Sähköposti</th>
+                <th>Koko nimi</th>
+                <th>Aktiivinen</th>
+                <th>Ylläpitäjä</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kayttajat.map(k => (
+                <tr key={k.id}>
+                  <td><div className="row-cell-wrap">
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text3)" }}>{k.id}</span>
+                  </div></td>
+                  <td><div className="row-cell-wrap"><span className="cell-text">{k.kayttajatunnus}</span></div></td>
+                  <td><div className="row-cell-wrap"><span className="cell-text">{k.email}</span></div></td>
+                  <td><div className="row-cell-wrap"><span className="cell-text">{k.koko_nimi ?? "—"}</span></div></td>
+                  <td><div className="row-cell-wrap">
+                    {k.aktiivinen ? <span className="tag tag-green">kyllä</span> : <span className="tag tag-gray">ei</span>}
+                  </div></td>
+                  <td><div className="row-cell-wrap">
+                    {k.yllapitaja ? <span className="tag tag-amber">kyllä</span> : <span className="tag tag-gray">ei</span>}
+                  </div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ─── TreeNode ─────────────────────────────────────────────────────────────────
 
 function TreeNode({ node, activeTaulu, onSelect, depth = 0 }) {
@@ -980,10 +1066,31 @@ export default function App() {
               + Uusi kansio
             </button>
           </div>
+
+          <div className="sidebar-section" style={{ marginTop: 16 }}>Järjestelmä</div>
+          <div
+            className={`tree-item${activeTaulu === "__kayttajat__" ? " active" : ""}`}
+            style={{ paddingLeft: 12 }}
+            onClick={() => setActiveTaulu("__kayttajat__")}
+          >
+            <span>👤</span>
+            <span>Käyttäjät</span>
+          </div>
         </div>
 
         {/* Main */}
         <div className="main">
+          {activeTaulu === "__kayttajat__" ? (
+            <>
+              <div className="view-header">
+                <span style={{ fontSize: 20 }}>👤</span>
+                <span className="view-title">Käyttäjät</span>
+                <span className="view-subtitle">oikeaa dataa backendistä</span>
+              </div>
+              <KayttajatTab />
+            </>
+          ) : (
+          <>
           <div className="view-header">
             <span style={{ fontSize: 20 }}>
               {MOCK_TREE.flatMap(n => n.lapset ?? []).find(n => n.nimi === activeTaulu)?.ikoni ?? "📋"}
@@ -1009,6 +1116,8 @@ export default function App() {
           {activeTab === "rivit"     && <RivitTab     tauluNimi={activeTaulu} />}
           {activeTab === "sarakkeet" && <SarakkeetTab tauluNimi={activeTaulu} />}
           {activeTab === "rakenne"   && <RakenneTab   tauluNimi={activeTaulu} />}
+          </>
+          )}
         </div>
       </div>
     </>
