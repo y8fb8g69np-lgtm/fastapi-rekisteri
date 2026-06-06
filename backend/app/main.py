@@ -1,0 +1,45 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import get_settings
+from app.db.session import Base, engine
+from app.models import user as _user_model  # noqa: F401  (rekisteröi mallin Baseen)
+from app.routers import users
+
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Kehityskäyttöön: luo taulut automaattisesti.
+    # Tuotannossa käytä Alembic-migraatioita (ks. README).
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title=settings.api_title, version=settings.api_version, lifespan=lifespan)
+
+# CORS — salli frontendin kutsut. Kehityksessä Vite pyörii portissa 5173.
+# Tuotannossa korvaa allow_origins omalla domainilla.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/", tags=["Yleiset"])
+def juuri():
+    return {"sovellus": settings.api_title, "versio": settings.api_version, "docs": "/docs"}
+
+
+@app.get("/health", tags=["Yleiset"])
+def terveys():
+    return {"status": "ok"}
+
+
+app.include_router(users.router)
