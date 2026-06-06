@@ -130,27 +130,29 @@ const MOCK_TAULUT = {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const css = `
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
     --bg:       #ffffff;
-    --surface:  #ffffff;
-    --surface2: #f6f7f9;
-    --border:   #ececf0;
-    --border2:  #dcdce2;
+    --surface:  #f7f8fa;
+    --surface2: #eef1f5;
+    --border:   #e2e6ec;
+    --border2:  #cdd4de;
     --accent:   #2d6fe0;
     --accent2:  #1f54b8;
     --green:    #1f9d63;
     --amber:    #c97a0e;
     --red:      #d23b3b;
-    --text:     #1c1c1f;
-    --text2:    #6b6b76;
-    --text3:    #a0a0aa;
-    --mono:     ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
-    --sans:     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --text:     #1a2233;
+    --text2:    #5b6678;
+    --text3:    #97a1b2;
+    --mono:     'IBM Plex Mono', monospace;
+    --sans:     'IBM Plex Sans', sans-serif;
   }
 
-  body { background: var(--bg); color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); }
 
   .app {
     display: grid;
@@ -355,13 +357,13 @@ const css = `
   }
   .data-table th {
     text-align: left;
-    padding: 11px 16px;
-    font-size: 12px;
-    font-family: var(--sans);
-    color: var(--text2);
-    letter-spacing: 0;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text3);
+    letter-spacing: 0.05em;
     border-bottom: 1px solid var(--border);
-    font-weight: 600;
+    font-weight: 400;
     background: var(--bg);
     position: sticky;
     top: 0;
@@ -372,9 +374,8 @@ const css = `
     border-bottom: 1px solid var(--border);
     vertical-align: top;
   }
-  .data-table tbody tr:hover { background: var(--surface2); }
   .row-cell-wrap {
-    padding: 12px 16px;
+    padding: 9px 12px;
     display: flex;
     align-items: center;
     gap: 6px;
