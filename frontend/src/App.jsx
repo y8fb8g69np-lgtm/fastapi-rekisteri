@@ -1176,6 +1176,247 @@ function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
   );
 }
 
+// ─── RiviHallintaTab: rivien listaus, luonti ja muokkaus ──────────────────────
+
+function syotonTyyppi(tietotyyppi) {
+  if (tietotyyppi === "date") return "date";
+  if (tietotyyppi === "integer" || tietotyyppi === "decimal") return "number";
+  return "text";
+}
+
+function RiviHallintaTab({ taulu }) {
+  const [sarakkeet, setSarakkeet] = useState([]);
+  const [rivit, setRivit]   = useState([]);
+  const [lataa, setLataa]   = useState(true);
+  const [virhe, setVirhe]   = useState(null);
+
+  // Lomakkeen tila: muokattava masterrivi_id (null = uusi), ja arvot { sarake_id: arvo }
+  const [lomakeAuki, setLomakeAuki]   = useState(false);
+  const [muokattava, setMuokattava]   = useState(null); // masterrivi_id tai null
+  const [kentat, setKentat]           = useState({});    // { sarake_id: string }
+  const [tallentaa, setTallentaa]     = useState(false);
+
+  const haeKaikki = useCallback(async () => {
+    setLataa(true);
+    setVirhe(null);
+    try {
+      const [sRes, rRes] = await Promise.all([
+        fetch(`${API_BASE}/taulut/${taulu.id}/sarakkeet`),
+        fetch(`${API_BASE}/taulut/${taulu.id}/rivit`),
+      ]);
+      if (!sRes.ok) throw new Error(`Sarakkeet: palvelin vastasi ${sRes.status}`);
+      if (!rRes.ok) throw new Error(`Rivit: palvelin vastasi ${rRes.status}`);
+      setSarakkeet(await sRes.json());
+      setRivit(await rRes.json());
+    } catch (e) {
+      setVirhe(e.message);
+    } finally {
+      setLataa(false);
+    }
+  }, [taulu.id]);
+
+  useEffect(() => { haeKaikki(); }, [haeKaikki]);
+
+  // Muunna rivin arvot lomakekentiksi { sarake_id: tekstiarvo }
+  const arvotKentiksi = (rivi) => {
+    const k = {};
+    for (const s of sarakkeet) {
+      const a = rivi.arvot.find(x => x.sarake_id === s.id);
+      k[s.id] = a?.arvo_text ?? "";
+    }
+    return k;
+  };
+
+  const avaaUusi = () => {
+    const tyhja = {};
+    for (const s of sarakkeet) tyhja[s.id] = "";
+    setKentat(tyhja);
+    setMuokattava(null);
+    setLomakeAuki(true);
+  };
+
+  const avaaMuokkaus = (rivi) => {
+    setKentat(arvotKentiksi(rivi));
+    setMuokattava(rivi.masterrivi_id);
+    setLomakeAuki(true);
+  };
+
+  const sulje = () => { setLomakeAuki(false); setMuokattava(null); setKentat({}); };
+
+  const tallenna = async () => {
+    setTallentaa(true);
+    setVirhe(null);
+    try {
+      // Kokoa arvot backendin muotoon (vain ei-tyhjät tekstiarvot)
+      const arvot = sarakkeet
+        .filter(s => s.tietotyyppi !== "viittaus")            // viittaukset hoidetaan myöhemmin
+        .map(s => ({ sarake_id: s.id, arvo_text: kentat[s.id] ?? "" }))
+        .filter(a => a.arvo_text !== "");
+
+      const onUusi = muokattava === null;
+      const url = onUusi
+        ? `${API_BASE}/taulut/${taulu.id}/rivit`
+        : `${API_BASE}/taulut/${taulu.id}/rivit/${muokattava}`;
+      const res = await fetch(url, {
+        method: onUusi ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ arvot }),
+      });
+      if (!res.ok) {
+        const v = await res.json().catch(() => ({}));
+        throw new Error(v.detail ? JSON.stringify(v.detail) : `Palvelin vastasi ${res.status}`);
+      }
+      sulje();
+      await haeKaikki();
+    } catch (e) {
+      setVirhe(e.message);
+    } finally {
+      setTallentaa(false);
+    }
+  };
+
+  const poista = async (rivi) => {
+    if (!confirm("Poistetaanko tämä rivi? (Historia säilyy)")) return;
+    setVirhe(null);
+    try {
+      const res = await fetch(`${API_BASE}/taulut/${taulu.id}/rivit/${rivi.masterrivi_id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok && res.status !== 204) throw new Error(`Palvelin vastasi ${res.status}`);
+      await haeKaikki();
+    } catch (e) {
+      setVirhe(e.message);
+    }
+  };
+
+  // Näytettävät sarakkeet (viittaukset näytetään, mutta merkitään)
+  const naytettavat = sarakkeet;
+
+  const soluArvo = (rivi, sarake) => {
+    const a = rivi.arvot.find(x => x.sarake_id === sarake.id);
+    if (!a) return "—";
+    if (sarake.tietotyyppi === "viittaus") {
+      return a.viittaus_masterrivi_id ? `↗ #${a.viittaus_masterrivi_id}` : "—";
+    }
+    return a.arvo_text ?? "—";
+  };
+
+  if (sarakkeet.length === 0 && !lataa) {
+    return (
+      <div className="empty-state">
+        Tällä taululla ei ole vielä sarakkeita. Lisää sarakkeita ensin “Sarakkeet”-välilehdeltä.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="toolbar">
+        <button className="btn-ghost" onClick={haeKaikki}>↻ Päivitä</button>
+        <button className="btn-primary" onClick={avaaUusi} disabled={sarakkeet.length === 0}>
+          + Uusi rivi
+        </button>
+      </div>
+
+      {virhe && (
+        <div className="table-wrap">
+          <div className="empty-state" style={{ color: "var(--red)", textAlign: "left" }}>
+            Virhe: {virhe}
+          </div>
+        </div>
+      )}
+
+      {/* Lomake (uusi tai muokkaus) */}
+      {lomakeAuki && (
+        <div className="table-wrap">
+          <div className="sarake-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+              {muokattava === null ? "Uusi rivi" : `Muokkaa riviä (uusi versio) — master #${muokattava}`}
+            </div>
+            {naytettavat.map(s => (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <label style={{ width: 160, fontSize: 13, color: "var(--text2)" }}>
+                  {s.nimi}
+                  {s.pakollinen && <span style={{ color: "var(--red)" }}> *</span>}
+                </label>
+                {s.tietotyyppi === "viittaus" ? (
+                  <span style={{ fontSize: 12, color: "var(--text3)" }}>
+                    (viittaus — tuetaan seuraavassa vaiheessa)
+                  </span>
+                ) : (
+                  <input
+                    className="search-box"
+                    type={syotonTyyppi(s.tietotyyppi)}
+                    value={kentat[s.id] ?? ""}
+                    onChange={e => setKentat(k => ({ ...k, [s.id]: e.target.value }))}
+                    style={{ width: 280 }}
+                  />
+                )}
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <button className="btn-primary" onClick={tallenna} disabled={tallentaa} style={{ marginLeft: 0 }}>
+                {tallentaa ? "Tallennetaan…" : (muokattava === null ? "Luo rivi" : "Tallenna uusi versio")}
+              </button>
+              <button className="btn-ghost" onClick={sulje}>Peruuta</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="table-wrap">
+        {lataa && <div className="empty-state">Ladataan…</div>}
+        {!lataa && rivit.length === 0 && (
+          <div className="empty-state">Ei rivejä — lisää ensimmäinen “+ Uusi rivi” -painikkeella.</div>
+        )}
+        {!lataa && rivit.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>master</th>
+                {naytettavat.map(s => <th key={s.id}>{s.nimi}</th>)}
+                <th>Voimassa</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rivit.map(rivi => (
+                <tr key={rivi.id}>
+                  <td><div className="row-cell-wrap">
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text3)" }}>
+                      #{rivi.masterrivi_id}
+                    </span>
+                  </div></td>
+                  {naytettavat.map(s => (
+                    <td key={s.id}>
+                      <div className="row-cell-wrap">
+                        {s.tietotyyppi === "viittaus"
+                          ? <span className="cell-ref">{soluArvo(rivi, s)}</span>
+                          : <span className="cell-text">{soluArvo(rivi, s)}</span>}
+                      </div>
+                    </td>
+                  ))}
+                  <td><div className="row-cell-wrap">
+                    <span className="voimassa-text">
+                      {new Date(rivi.voimassa_alku).toLocaleDateString("fi-FI")} →
+                    </span>
+                  </div></td>
+                  <td>
+                    <div className="row-cell-wrap row-actions">
+                      <button className="action-btn" title="Muokkaa (uusi versio)" onClick={() => avaaMuokkaus(rivi)}>✏</button>
+                      <button className="action-btn" title="Poista" style={{ color: "var(--red)" }} onClick={() => poista(rivi)}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -1355,10 +1596,7 @@ export default function App() {
                 <SarakeHallintaTab taulu={valittuTaulu} kaikkiTaulut={taulut} onMuutos={haeTaulut} />
               )}
               {activeTab === "rivit" && (
-                <div className="empty-state">
-                  Rividata ei ole vielä käytössä — tämä tulee seuraavassa vaiheessa
-                  (rivi/arvo-päätepisteet).
-                </div>
+                <RiviHallintaTab taulu={valittuTaulu} />
               )}
             </>
           ) : (
