@@ -135,19 +135,19 @@ const css = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:       #0f1117;
-    --surface:  #161b27;
-    --surface2: #1e2535;
-    --border:   #2a3347;
-    --border2:  #364158;
-    --accent:   #4f8ef7;
-    --accent2:  #2d5fd4;
-    --green:    #3ecf8e;
-    --amber:    #f5a623;
-    --red:      #e05252;
-    --text:     #e2e8f4;
-    --text2:    #8b96b0;
-    --text3:    #4a5568;
+    --bg:       #ffffff;
+    --surface:  #f7f8fa;
+    --surface2: #eef1f5;
+    --border:   #e2e6ec;
+    --border2:  #cdd4de;
+    --accent:   #2d6fe0;
+    --accent2:  #1f54b8;
+    --green:    #1f9d63;
+    --amber:    #c97a0e;
+    --red:      #d23b3b;
+    --text:     #1a2233;
+    --text2:    #5b6678;
+    --text3:    #97a1b2;
     --mono:     'IBM Plex Mono', monospace;
     --sans:     'IBM Plex Sans', sans-serif;
   }
