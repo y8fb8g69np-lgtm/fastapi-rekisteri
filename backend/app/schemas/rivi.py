@@ -60,3 +60,10 @@ class RiviHistoriaOut(BaseModel):
     voimassa_alku: datetime
     voimassa_loppu: datetime | None
     tila: str
+
+
+class ViittausVaihtoehto(BaseModel):
+    """Yksi vaihtoehto viittausvalikossa: masterrivi + näyttöotsikko."""
+
+    masterrivi_id: int
+    otsikko: str

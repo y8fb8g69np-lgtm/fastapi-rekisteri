@@ -16,6 +16,7 @@ class SarakeBase(BaseModel):
     jarjestys: int = 0
     kuvaus: str | None = None
     viittaus_taulu_id: int | None = None
+    viittausnakyvyys: int = 0
 
     @model_validator(mode="after")
     def _tarkista_viittaus(self):
@@ -39,6 +40,7 @@ class SarakeUpdate(BaseModel):
     jarjestys: int | None = None
     kuvaus: str | None = None
     viittaus_taulu_id: int | None = None
+    viittausnakyvyys: int | None = None
 
 
 class SarakeRead(SarakeBase):

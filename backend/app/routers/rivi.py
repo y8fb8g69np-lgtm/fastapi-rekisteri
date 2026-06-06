@@ -5,7 +5,7 @@ from app.crud import rekisteri as taulu_crud
 from app.crud import rivi as crud
 from app.db.session import get_db
 from app.models.rekisteri import Masterrivi
-from app.schemas.rivi import RiviCreate, RiviHistoriaOut, RiviOut, RiviUpdate
+from app.schemas.rivi import RiviCreate, RiviHistoriaOut, RiviOut, RiviUpdate, ViittausVaihtoehto
 
 router = APIRouter(prefix="/taulut/{taulu_id}/rivit", tags=["Rivit"])
 
@@ -37,6 +37,14 @@ def listaa_rivit(taulu_id: int, db: Session = Depends(get_db)):
     if not taulu_crud.get_taulu(db, taulu_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Taulua ei löytynyt")
     return crud.list_aktiiviset_rivit(db, taulu_id)
+
+
+@router.get("/vaihtoehdot", response_model=list[ViittausVaihtoehto])
+def listaa_viittausvaihtoehdot(taulu_id: int, db: Session = Depends(get_db)):
+    """Taulun rivit viittausvalikkoa varten: masterrivi_id + näyttöotsikko."""
+    if not taulu_crud.get_taulu(db, taulu_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Taulua ei löytynyt")
+    return crud.list_rivit_otsikoineen(db, taulu_id)
 
 
 @router.post("", response_model=RiviOut, status_code=status.HTTP_201_CREATED)

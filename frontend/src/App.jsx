@@ -1045,6 +1045,7 @@ function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
   const [tietotyyppi, setTietotyyppi] = useState("text");
   const [pakollinen, setPakollinen]   = useState(false);
   const [viittausTauluId, setViittausTauluId] = useState("");
+  const [viittausnakyvyys, setViittausnakyvyys] = useState(0);
   const [tallentaa, setTallentaa]     = useState(false);
 
   const haeSarakkeet = useCallback(async () => {
@@ -1065,6 +1066,7 @@ function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
 
   const tyhjennaLomake = () => {
     setNimi(""); setTietotyyppi("text"); setPakollinen(false); setViittausTauluId("");
+    setViittausnakyvyys(0);
   };
 
   const lisaaSarake = async () => {
@@ -1077,6 +1079,7 @@ function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
         tietotyyppi,
         pakollinen,
         viittaus_taulu_id: tietotyyppi === "viittaus" ? Number(viittausTauluId) : null,
+        viittausnakyvyys: Number(viittausnakyvyys) || 0,
       };
       const res = await fetch(`${API_BASE}/taulut/${taulu.id}/sarakkeet`, {
         method: "POST",
@@ -1153,6 +1156,12 @@ function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
             <input type="checkbox" checked={pakollinen} onChange={e => setPakollinen(e.target.checked)} />
             Pakollinen
           </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text2)" }}
+            title="Jos > 0, tämä sarake näytetään kun tähän tauluun viitataan. Pienempi numero ensin.">
+            Viittausnäkyvyys
+            <input type="number" min="0" className="search-box" value={viittausnakyvyys}
+              onChange={e => setViittausnakyvyys(e.target.value)} style={{ width: 64 }} />
+          </label>
           <button className="btn-primary" onClick={lisaaSarake}
             disabled={tallentaa || !nimi.trim() || (tietotyyppi === "viittaus" && !viittausTauluId)}>
             {tallentaa ? "Tallennetaan…" : "Tallenna"}
@@ -1173,6 +1182,9 @@ function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
             <span style={{ fontSize: 12, color: "var(--amber)" }}>→ {tauluNimellaId(s.viittaus_taulu_id)}</span>
           )}
           {s.pakollinen && <span className="tag tag-gray">pakollinen</span>}
+          {(s.viittausnakyvyys || 0) > 0 && (
+            <span className="tag tag-green" title="Näkyvyysjärjestys viittauksissa">👁 {s.viittausnakyvyys}</span>
+          )}
           <span style={{ flex: 1 }}></span>
           <button className="action-btn" style={{ color: "var(--red)" }} onClick={() => poistaSarake(s)}>🗑</button>
         </div>
@@ -1195,6 +1207,9 @@ function RiviHallintaTab({ taulu }) {
   const [lataa, setLataa]   = useState(true);
   const [virhe, setVirhe]   = useState(null);
 
+  // Viittausvaihtoehdot per kohdetaulu: { taulu_id: [{ masterrivi_id, otsikko }] }
+  const [viittausVaihtoehdot, setViittausVaihtoehdot] = useState({});
+
   // Lomakkeen tila: muokattava masterrivi_id (null = uusi), ja arvot { sarake_id: arvo }
   const [lomakeAuki, setLomakeAuki]   = useState(false);
   const [muokattava, setMuokattava]   = useState(null); // masterrivi_id tai null
@@ -1211,8 +1226,21 @@ function RiviHallintaTab({ taulu }) {
       ]);
       if (!sRes.ok) throw new Error(`Sarakkeet: palvelin vastasi ${sRes.status}`);
       if (!rRes.ok) throw new Error(`Rivit: palvelin vastasi ${rRes.status}`);
-      setSarakkeet(await sRes.json());
+      const sar = await sRes.json();
+      setSarakkeet(sar);
       setRivit(await rRes.json());
+
+      // Hae viittausvaihtoehdot jokaiselle viittaussarakkeen kohdetaululle
+      const kohdeIdt = [...new Set(
+        sar.filter(s => s.tietotyyppi === "viittaus" && s.viittaus_taulu_id)
+           .map(s => s.viittaus_taulu_id)
+      )];
+      const vaihtoehdot = {};
+      await Promise.all(kohdeIdt.map(async (kohdeId) => {
+        const res = await fetch(`${API_BASE}/taulut/${kohdeId}/rivit/vaihtoehdot`);
+        if (res.ok) vaihtoehdot[kohdeId] = await res.json();
+      }));
+      setViittausVaihtoehdot(vaihtoehdot);
     } catch (e) {
       setVirhe(e.message);
     } finally {
@@ -1222,12 +1250,17 @@ function RiviHallintaTab({ taulu }) {
 
   useEffect(() => { haeKaikki(); }, [haeKaikki]);
 
-  // Muunna rivin arvot lomakekentiksi { sarake_id: tekstiarvo }
+  // Muunna rivin arvot lomakekentiksi { sarake_id: arvo }
+  // Viittauksille tallennetaan masterrivi_id, muille tekstiarvo.
   const arvotKentiksi = (rivi) => {
     const k = {};
     for (const s of sarakkeet) {
       const a = rivi.arvot.find(x => x.sarake_id === s.id);
-      k[s.id] = a?.arvo_text ?? "";
+      if (s.tietotyyppi === "viittaus") {
+        k[s.id] = a?.viittaus_masterrivi_id != null ? String(a.viittaus_masterrivi_id) : "";
+      } else {
+        k[s.id] = a?.arvo_text ?? "";
+      }
     }
     return k;
   };
@@ -1252,11 +1285,17 @@ function RiviHallintaTab({ taulu }) {
     setTallentaa(true);
     setVirhe(null);
     try {
-      // Kokoa arvot backendin muotoon (vain ei-tyhjät tekstiarvot)
+      // Kokoa arvot backendin muotoon. Viittaukset -> viittaus_masterrivi_id,
+      // muut -> arvo_text. Tyhjät jätetään pois.
       const arvot = sarakkeet
-        .filter(s => s.tietotyyppi !== "viittaus")            // viittaukset hoidetaan myöhemmin
-        .map(s => ({ sarake_id: s.id, arvo_text: kentat[s.id] ?? "" }))
-        .filter(a => a.arvo_text !== "");
+        .map(s => {
+          const v = kentat[s.id] ?? "";
+          if (s.tietotyyppi === "viittaus") {
+            return v === "" ? null : { sarake_id: s.id, viittaus_masterrivi_id: Number(v) };
+          }
+          return v === "" ? null : { sarake_id: s.id, arvo_text: v };
+        })
+        .filter(Boolean);
 
       const onUusi = muokattava === null;
       const url = onUusi
@@ -1294,14 +1333,23 @@ function RiviHallintaTab({ taulu }) {
     }
   };
 
-  // Näytettävät sarakkeet (viittaukset näytetään, mutta merkitään)
+  // Näytettävät sarakkeet
   const naytettavat = sarakkeet;
+
+  // Otsikko viitatulle masterriville (hakee kohdetaulun vaihtoehdoista)
+  const viittausOtsikko = (sarake, masterrivi_id) => {
+    const lista = viittausVaihtoehdot[sarake.viittaus_taulu_id] || [];
+    const v = lista.find(x => x.masterrivi_id === masterrivi_id);
+    return v ? v.otsikko : `#${masterrivi_id}`;
+  };
 
   const soluArvo = (rivi, sarake) => {
     const a = rivi.arvot.find(x => x.sarake_id === sarake.id);
     if (!a) return "—";
     if (sarake.tietotyyppi === "viittaus") {
-      return a.viittaus_masterrivi_id ? `↗ #${a.viittaus_masterrivi_id}` : "—";
+      return a.viittaus_masterrivi_id
+        ? `↗ ${viittausOtsikko(sarake, a.viittaus_masterrivi_id)}`
+        : "—";
     }
     return a.arvo_text ?? "—";
   };
@@ -1345,9 +1393,19 @@ function RiviHallintaTab({ taulu }) {
                   {s.pakollinen && <span style={{ color: "var(--red)" }}> *</span>}
                 </label>
                 {s.tietotyyppi === "viittaus" ? (
-                  <span style={{ fontSize: 12, color: "var(--text3)" }}>
-                    (viittaus — tuetaan seuraavassa vaiheessa)
-                  </span>
+                  <select
+                    className="search-box"
+                    value={kentat[s.id] ?? ""}
+                    onChange={e => setKentat(k => ({ ...k, [s.id]: e.target.value }))}
+                    style={{ width: 280 }}
+                  >
+                    <option value="">— ei viittausta —</option>
+                    {(viittausVaihtoehdot[s.viittaus_taulu_id] || []).map(v => (
+                      <option key={v.masterrivi_id} value={v.masterrivi_id}>
+                        {v.otsikko}
+                      </option>
+                    ))}
+                  </select>
                 ) : (
                   <input
                     className="search-box"

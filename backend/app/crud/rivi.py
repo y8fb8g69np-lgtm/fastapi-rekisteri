@@ -117,3 +117,29 @@ def get_sarakkeet(db: Session, taulu_id: int) -> list[Sarake]:
             select(Sarake).where(Sarake.taulu_id == taulu_id).order_by(Sarake.jarjestys)
         ).all()
     )
+
+
+def list_rivit_otsikoineen(db: Session, taulu_id: int) -> list[dict]:
+    """Taulun aktiiviset rivit valikkoa varten: masterrivi_id + näyttöotsikko.
+    Otsikko kootaan niistä sarakkeista joilla viittausnakyvyys > 0,
+    järjestettynä viittausnakyvyys-numeron mukaan."""
+    # Näkyvyyssarakkeet järjestyksessä
+    nakyvat = [
+        s for s in get_sarakkeet(db, taulu_id) if (s.viittausnakyvyys or 0) > 0
+    ]
+    nakyvat.sort(key=lambda s: s.viittausnakyvyys)
+
+    rivit = list_aktiiviset_rivit(db, taulu_id)
+    tulos = []
+    for r in rivit:
+        if nakyvat:
+            osat = []
+            for s in nakyvat:
+                a = next((x for x in r.arvot if x.sarake_id == s.id), None)
+                osat.append((a.arvo_text if a and a.arvo_text else "—"))
+            otsikko = " | ".join(osat)
+        else:
+            otsikko = f"#{r.masterrivi_id}"
+        tulos.append({"masterrivi_id": r.masterrivi_id, "otsikko": otsikko})
+    return tulos
+

@@ -46,6 +46,9 @@ class Sarake(Base):
     viittaus_taulu_id: Mapped[int | None] = mapped_column(
         ForeignKey("taulu.id", ondelete="SET NULL"), nullable=True
     )
+    # Näkyvyysjärjestys viittauksissa: jos > 0, tämä sarake näytetään kun
+    # tähän tauluun viitataan. Pienempi numero näytetään ensin. 0 = ei näytetä.
+    viittausnakyvyys: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     luotu_aika: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

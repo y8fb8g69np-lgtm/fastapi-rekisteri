@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.config import get_settings
 from app.db.session import Base, engine
@@ -12,11 +13,23 @@ from app.routers import rekisteri, rivi, users
 settings = get_settings()
 
 
+def _kevyt_migraatio() -> None:
+    """Lisää uudet sarakkeet olemassa oleviin tauluihin.
+    create_all luo vain puuttuvat taulut, ei sarakkeita, joten tämä
+    täydentää sen. Turvallinen ajaa toistuvasti (IF NOT EXISTS)."""
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE sarake ADD COLUMN IF NOT EXISTS "
+            "viittausnakyvyys INTEGER NOT NULL DEFAULT 0"
+        ))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Kehityskäyttöön: luo taulut automaattisesti.
     # Tuotannossa käytä Alembic-migraatioita (ks. README).
     Base.metadata.create_all(bind=engine)
+    _kevyt_migraatio()
     yield
 
 
