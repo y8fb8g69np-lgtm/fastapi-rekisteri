@@ -1048,6 +1048,10 @@ function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
   const [viittausnakyvyys, setViittausnakyvyys] = useState(0);
   const [tallentaa, setTallentaa]     = useState(false);
 
+  // Muokkaustila: sarakkeen id jota muokataan, ja sen muokattavat kentät
+  const [muokattavaId, setMuokattavaId] = useState(null);
+  const [muokkausKentat, setMuokkausKentat] = useState({});
+
   const haeSarakkeet = useCallback(async () => {
     setLataa(true);
     setVirhe(null);
@@ -1118,6 +1122,44 @@ function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
 
   const tauluNimellaId = (id) => kaikkiTaulut.find(t => t.id === id)?.nimi ?? `#${id}`;
 
+  const avaaMuokkaus = (s) => {
+    setMuokattavaId(s.id);
+    setMuokkausKentat({
+      nimi: s.nimi,
+      pakollinen: s.pakollinen,
+      viittausnakyvyys: s.viittausnakyvyys || 0,
+    });
+  };
+
+  const peruutaMuokkaus = () => {
+    setMuokattavaId(null);
+    setMuokkausKentat({});
+  };
+
+  const tallennaMuokkaus = async (s) => {
+    setVirhe(null);
+    try {
+      const res = await fetch(`${API_BASE}/taulut/${taulu.id}/sarakkeet/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nimi: muokkausKentat.nimi,
+          pakollinen: muokkausKentat.pakollinen,
+          viittausnakyvyys: Number(muokkausKentat.viittausnakyvyys) || 0,
+        }),
+      });
+      if (!res.ok) {
+        const v = await res.json().catch(() => ({}));
+        throw new Error(v.detail ? JSON.stringify(v.detail) : `Palvelin vastasi ${res.status}`);
+      }
+      peruutaMuokkaus();
+      await haeSarakkeet();
+      onMuutos?.();
+    } catch (e) {
+      setVirhe(e.message);
+    }
+  };
+
   return (
     <div className="sarake-list">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -1176,17 +1218,51 @@ function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
       {!lataa && sarakkeet.map((s, i) => (
         <div className="sarake-row" key={s.id}>
           <span className="sarake-num">{i + 1}</span>
-          <span className="sarake-nimi">{s.nimi}</span>
-          <span className={typeBadgeClass(s.tietotyyppi)}>{s.tietotyyppi}</span>
-          {s.tietotyyppi === "viittaus" && s.viittaus_taulu_id && (
-            <span style={{ fontSize: 12, color: "var(--amber)" }}>→ {tauluNimellaId(s.viittaus_taulu_id)}</span>
+          {muokattavaId === s.id ? (
+            <>
+              <input
+                className="search-box"
+                value={muokkausKentat.nimi}
+                onChange={e => setMuokkausKentat(k => ({ ...k, nimi: e.target.value }))}
+                style={{ width: 180 }}
+              />
+              <span className={typeBadgeClass(s.tietotyyppi)}>{s.tietotyyppi}</span>
+              {s.tietotyyppi === "viittaus" && s.viittaus_taulu_id && (
+                <span style={{ fontSize: 12, color: "var(--amber)" }}>→ {tauluNimellaId(s.viittaus_taulu_id)}</span>
+              )}
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text2)" }}>
+                <input type="checkbox" checked={muokkausKentat.pakollinen}
+                  onChange={e => setMuokkausKentat(k => ({ ...k, pakollinen: e.target.checked }))} />
+                Pakollinen
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text2)" }}
+                title="Jos > 0, tämä sarake näytetään kun tähän tauluun viitataan. Pienempi numero ensin.">
+                Viittausnäkyvyys
+                <input type="number" min="0" className="search-box"
+                  value={muokkausKentat.viittausnakyvyys}
+                  onChange={e => setMuokkausKentat(k => ({ ...k, viittausnakyvyys: e.target.value }))}
+                  style={{ width: 64 }} />
+              </label>
+              <span style={{ flex: 1 }}></span>
+              <button className="btn-primary" style={{ marginLeft: 0 }} onClick={() => tallennaMuokkaus(s)}>Tallenna</button>
+              <button className="btn-ghost" onClick={peruutaMuokkaus}>Peruuta</button>
+            </>
+          ) : (
+            <>
+              <span className="sarake-nimi">{s.nimi}</span>
+              <span className={typeBadgeClass(s.tietotyyppi)}>{s.tietotyyppi}</span>
+              {s.tietotyyppi === "viittaus" && s.viittaus_taulu_id && (
+                <span style={{ fontSize: 12, color: "var(--amber)" }}>→ {tauluNimellaId(s.viittaus_taulu_id)}</span>
+              )}
+              {s.pakollinen && <span className="tag tag-gray">pakollinen</span>}
+              {(s.viittausnakyvyys || 0) > 0 && (
+                <span className="tag tag-green" title="Näkyvyysjärjestys viittauksissa">👁 {s.viittausnakyvyys}</span>
+              )}
+              <span style={{ flex: 1 }}></span>
+              <button className="action-btn" onClick={() => avaaMuokkaus(s)}>✏</button>
+              <button className="action-btn" style={{ color: "var(--red)" }} onClick={() => poistaSarake(s)}>🗑</button>
+            </>
           )}
-          {s.pakollinen && <span className="tag tag-gray">pakollinen</span>}
-          {(s.viittausnakyvyys || 0) > 0 && (
-            <span className="tag tag-green" title="Näkyvyysjärjestys viittauksissa">👁 {s.viittausnakyvyys}</span>
-          )}
-          <span style={{ flex: 1 }}></span>
-          <button className="action-btn" style={{ color: "var(--red)" }} onClick={() => poistaSarake(s)}>🗑</button>
         </div>
       ))}
     </div>
