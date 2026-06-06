@@ -4,6 +4,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+# Vite lukee VITE_-muuttujat KÄÄNNÖSAIKANA. Railwayssa service-muuttujat eivät
+# automaattisesti näy Docker-buildissa, joten otetaan se build-argumenttina.
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
 # --- Serve-vaihe ---
