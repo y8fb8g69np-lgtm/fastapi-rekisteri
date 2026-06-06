@@ -374,6 +374,11 @@ const css = `
     border-bottom: 1px solid var(--border);
     vertical-align: top;
   }
+  /* Pystyviivat solujen väliin */
+  .data-table th:not(:last-child),
+  .data-table td:not(:last-child) {
+    border-right: 1px solid var(--border);
+  }
   .row-cell-wrap {
     padding: 9px 12px;
     display: flex;
@@ -1532,7 +1537,6 @@ export default function App() {
               style={{ paddingLeft: 12 }}
               onClick={() => { setValinta(t.id); setActiveTab("sarakkeet"); }}
             >
-              <span>📋</span>
               <span>{t.nimi}</span>
             </div>
           ))}
