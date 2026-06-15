@@ -625,14 +625,17 @@ const css = `
     padding: 24px;
   }
   .modaali {
-    background: var(--bg); border-radius: 10px; width: 100%; max-width: 720px;
-    max-height: 85vh; display: flex; flex-direction: column;
+    background: var(--bg); border-radius: 10px; width: 720px; max-width: 95vw;
+    height: 70vh; min-width: 360px; min-height: 240px; max-height: 90vh;
+    display: flex; flex-direction: column;
     box-shadow: 0 12px 40px rgba(0,0,0,0.25); overflow: hidden;
+    resize: both; position: relative;
   }
   .modaali-otsikko {
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 18px; border-bottom: 1px solid var(--border);
     font-size: 14px; font-weight: 600; color: var(--text);
+    flex-shrink: 0;
   }
   .modaali-sulje {
     border: none; background: none; cursor: pointer; font-size: 16px;
@@ -640,7 +643,16 @@ const css = `
   }
   .modaali-sulje:hover { background: var(--surface2); color: var(--text); }
   .modaali-sisalto {
-    padding: 18px; overflow-y: auto; font-size: 14px; color: var(--text); line-height: 1.5;
+    padding: 18px; overflow-y: auto; flex: 1;
+    font-size: 14px; color: var(--text); line-height: 1.5;
+  }
+  /* Hienovarainen vihje venytyskahvasta oikeassa alanurkassa */
+  .modaali::after {
+    content: ""; position: absolute; right: 3px; bottom: 3px;
+    width: 10px; height: 10px; pointer-events: none;
+    background:
+      linear-gradient(135deg, transparent 50%, var(--border2) 50%, var(--border2) 60%, transparent 60%,
+      transparent 75%, var(--border2) 75%, var(--border2) 85%, transparent 85%);
   }
   .modaali-sisalto img { max-width: 100%; height: auto; border-radius: 6px; margin: 8px 0; }
   .modaali-sisalto h1 { font-size: 22px; margin: 14px 0 8px; }
