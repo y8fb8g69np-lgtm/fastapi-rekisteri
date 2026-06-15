@@ -606,10 +606,50 @@ const css = `
   .rte-content .ProseMirror ul, .rte-content .ProseMirror ol { padding-left: 22px; margin: 0 0 8px; }
 
   /* Richtext-arvon esikatselu taulukkosolussa */
+  .richtext-solu-wrap { position: relative; }
   .richtext-solu { max-height: 80px; overflow: hidden; font-size: 13px; color: var(--text); }
   .richtext-solu img { max-width: 60px; max-height: 60px; height: auto; border-radius: 3px; vertical-align: middle; }
   .richtext-solu p { margin: 0 0 4px; }
   .richtext-solu h1, .richtext-solu h2 { font-size: 14px; margin: 0 0 4px; }
+  .richtext-laajenna {
+    margin-top: 4px; border: 1px solid var(--border); background: var(--bg);
+    color: var(--accent); border-radius: 4px; padding: 2px 8px; font-size: 11px;
+    cursor: pointer; font-family: var(--sans);
+  }
+  .richtext-laajenna:hover { border-color: var(--accent); background: var(--surface2); }
+
+  /* Modaali (popup) */
+  .modaali-tausta {
+    position: fixed; inset: 0; background: rgba(20,30,50,0.45);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+    padding: 24px;
+  }
+  .modaali {
+    background: var(--bg); border-radius: 10px; width: 100%; max-width: 720px;
+    max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25); overflow: hidden;
+  }
+  .modaali-otsikko {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    font-size: 14px; font-weight: 600; color: var(--text);
+  }
+  .modaali-sulje {
+    border: none; background: none; cursor: pointer; font-size: 16px;
+    color: var(--text2); padding: 2px 6px; border-radius: 4px;
+  }
+  .modaali-sulje:hover { background: var(--surface2); color: var(--text); }
+  .modaali-sisalto {
+    padding: 18px; overflow-y: auto; font-size: 14px; color: var(--text); line-height: 1.5;
+  }
+  .modaali-sisalto img { max-width: 100%; height: auto; border-radius: 6px; margin: 8px 0; }
+  .modaali-sisalto h1 { font-size: 22px; margin: 14px 0 8px; }
+  .modaali-sisalto h2 { font-size: 18px; margin: 12px 0 6px; }
+  .modaali-sisalto p { margin: 0 0 10px; }
+  .modaali-sisalto ul, .modaali-sisalto ol { padding-left: 24px; margin: 0 0 10px; }
+  .modaali-sisalto blockquote {
+    border-left: 3px solid var(--border2); margin: 10px 0; padding-left: 14px; color: var(--text2);
+  }
 
   /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -1311,15 +1351,47 @@ function syotonTyyppi(tietotyyppi) {
 }
 
 // Näyttää richtext-arvon HTML:nä taulukkosolussa, rajattuna esikatseluna.
-function RichtextSolu({ rivi, sarake }) {
+// Klikkaamalla avautuu koko sisältö popupissa (onExpand).
+function RichtextSolu({ rivi, sarake, onExpand }) {
   const a = rivi.arvot.find(x => x.sarake_id === sarake.id);
   const html = a?.arvo_text ?? "";
   if (!html) return <span className="cell-text">—</span>;
   return (
-    <div
-      className="richtext-solu"
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <div className="richtext-solu-wrap">
+      <div
+        className="richtext-solu"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <button
+        type="button"
+        className="richtext-laajenna"
+        title="Näytä koko sisältö"
+        onClick={() => onExpand(html, sarake.nimi)}
+      >
+        ⤢ Näytä
+      </button>
+    </div>
+  );
+}
+
+// Popup joka näyttää richtext-sisällön kokonaan (vain katselu).
+function RichtextModaali({ html, otsikko, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="modaali-tausta" onClick={onClose}>
+      <div className="modaali" onClick={e => e.stopPropagation()}>
+        <div className="modaali-otsikko">
+          <span>{otsikko}</span>
+          <button type="button" className="modaali-sulje" onClick={onClose} title="Sulje (Esc)">✕</button>
+        </div>
+        <div className="modaali-sisalto" dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+    </div>
   );
 }
 
@@ -1337,6 +1409,9 @@ function RiviHallintaTab({ taulu }) {
   const [muokattava, setMuokattava]   = useState(null); // masterrivi_id tai null
   const [kentat, setKentat]           = useState({});    // { sarake_id: string }
   const [tallentaa, setTallentaa]     = useState(false);
+
+  // Richtext-popup: näytettävä sisältö (null = suljettu)
+  const [modaali, setModaali] = useState(null); // { html, otsikko } tai null
 
   const haeKaikki = useCallback(async () => {
     setLataa(true);
@@ -1591,7 +1666,7 @@ function RiviHallintaTab({ taulu }) {
                         {s.tietotyyppi === "viittaus"
                           ? <span className="cell-ref">{soluArvo(rivi, s)}</span>
                           : s.tietotyyppi === "richtext"
-                          ? <RichtextSolu rivi={rivi} sarake={s} />
+                          ? <RichtextSolu rivi={rivi} sarake={s} onExpand={(html, otsikko) => setModaali({ html, otsikko })} />
                           : <span className="cell-text">{soluArvo(rivi, s)}</span>}
                       </div>
                     </td>
@@ -1613,6 +1688,14 @@ function RiviHallintaTab({ taulu }) {
           </table>
         )}
       </div>
+
+      {modaali && (
+        <RichtextModaali
+          html={modaali.html}
+          otsikko={modaali.otsikko}
+          onClose={() => setModaali(null)}
+        />
+      )}
     </>
   );
 }
