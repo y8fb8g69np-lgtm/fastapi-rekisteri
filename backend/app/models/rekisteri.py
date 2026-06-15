@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -130,3 +130,19 @@ class Arvo(Base):
     )
 
     rivi: Mapped["Rivi"] = relationship(back_populates="arvot")
+
+
+class Kuva(Base):
+    """Tietokantaan tallennettu kuva. Rich text -sisältö viittaa näihin
+    osoitteella /kuvat/{id}."""
+
+    __tablename__ = "kuva"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    mime: Mapped[str] = mapped_column(String(100), nullable=False)
+    nimi: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    koko: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    luotu_aika: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

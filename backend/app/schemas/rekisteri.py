@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Sallitut tietotyypit sarakkeelle
-Tietotyyppi = Literal["text", "integer", "decimal", "date", "boolean", "viittaus"]
+Tietotyyppi = Literal["text", "integer", "decimal", "date", "boolean", "viittaus", "richtext"]
 
 
 # ─── Sarake ───────────────────────────────────────────────────────────────────

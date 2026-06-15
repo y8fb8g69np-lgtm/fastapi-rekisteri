@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import RichTextEditor from "./RichTextEditor.jsx";
 
 // Backendin osoite luetaan Viten ympäristömuuttujasta (VITE_API_URL).
 // Kehityksessä oletus on tyhjä, jolloin /api proxytetään vite.config.js:n kautta.
@@ -578,6 +579,38 @@ const css = `
     font-size: 13px;
   }
 
+  /* Rich text -editori */
+  .rte { border: 1px solid var(--border); border-radius: 6px; width: 100%; background: var(--bg); }
+  .rte-toolbar {
+    display: flex; flex-wrap: wrap; gap: 4px; padding: 6px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    border-radius: 6px 6px 0 0;
+  }
+  .rte-btn {
+    border: 1px solid var(--border); background: var(--bg); color: var(--text2);
+    border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer;
+    font-family: var(--sans);
+  }
+  .rte-btn:hover { border-color: var(--border2); color: var(--text); }
+  .rte-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .rte-content { padding: 10px 12px; min-height: 140px; font-size: 14px; color: var(--text); }
+  .rte-content:focus-within { outline: none; }
+  .rte-content .ProseMirror { outline: none; min-height: 120px; }
+  .rte-content .ProseMirror p { margin: 0 0 8px; }
+  .rte-content .ProseMirror h1 { font-size: 20px; margin: 12px 0 6px; }
+  .rte-content .ProseMirror h2 { font-size: 16px; margin: 10px 0 6px; }
+  .rte-content .ProseMirror img { max-width: 100%; height: auto; border-radius: 4px; }
+  .rte-content .ProseMirror blockquote {
+    border-left: 3px solid var(--border2); margin: 8px 0; padding-left: 12px; color: var(--text2);
+  }
+  .rte-content .ProseMirror ul, .rte-content .ProseMirror ol { padding-left: 22px; margin: 0 0 8px; }
+
+  /* Richtext-arvon esikatselu taulukkosolussa */
+  .richtext-solu { max-height: 80px; overflow: hidden; font-size: 13px; color: var(--text); }
+  .richtext-solu img { max-width: 60px; max-height: 60px; height: auto; border-radius: 3px; vertical-align: middle; }
+  .richtext-solu p { margin: 0 0 4px; }
+  .richtext-solu h1, .richtext-solu h2 { font-size: 14px; margin: 0 0 4px; }
+
   /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -1032,7 +1065,7 @@ function TreeNode({ node, activeTaulu, onSelect, depth = 0 }) {
 
 // ─── SarakeHallintaTab: oikeiden sarakkeiden hallinta backendistä ─────────────
 
-const TYYPIT = ["text", "integer", "decimal", "date", "boolean", "viittaus"];
+const TYYPIT = ["text", "richtext", "integer", "decimal", "date", "boolean", "viittaus"];
 
 function SarakeHallintaTab({ taulu, kaikkiTaulut, onMuutos }) {
   const [sarakkeet, setSarakkeet] = useState([]);
@@ -1277,6 +1310,19 @@ function syotonTyyppi(tietotyyppi) {
   return "text";
 }
 
+// Näyttää richtext-arvon HTML:nä taulukkosolussa, rajattuna esikatseluna.
+function RichtextSolu({ rivi, sarake }) {
+  const a = rivi.arvot.find(x => x.sarake_id === sarake.id);
+  const html = a?.arvo_text ?? "";
+  if (!html) return <span className="cell-text">—</span>;
+  return (
+    <div
+      className="richtext-solu"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
 function RiviHallintaTab({ taulu }) {
   const [sarakkeet, setSarakkeet] = useState([]);
   const [rivit, setRivit]   = useState([]);
@@ -1463,7 +1509,12 @@ function RiviHallintaTab({ taulu }) {
               {muokattava === null ? "Uusi rivi" : `Muokkaa riviä (uusi versio) — master #${muokattava}`}
             </div>
             {naytettavat.map(s => (
-              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div key={s.id} style={{
+                display: "flex",
+                alignItems: s.tietotyyppi === "richtext" ? "flex-start" : "center",
+                gap: 10,
+                flexDirection: s.tietotyyppi === "richtext" ? "column" : "row",
+              }}>
                 <label style={{ width: 160, fontSize: 13, color: "var(--text2)" }}>
                   {s.nimi}
                   {s.pakollinen && <span style={{ color: "var(--red)" }}> *</span>}
@@ -1482,6 +1533,14 @@ function RiviHallintaTab({ taulu }) {
                       </option>
                     ))}
                   </select>
+                ) : s.tietotyyppi === "richtext" ? (
+                  <div style={{ width: "100%" }}>
+                    <RichTextEditor
+                      value={kentat[s.id] ?? ""}
+                      onChange={(html) => setKentat(k => ({ ...k, [s.id]: html }))}
+                      apiBase={API_BASE}
+                    />
+                  </div>
                 ) : (
                   <input
                     className="search-box"
@@ -1531,6 +1590,8 @@ function RiviHallintaTab({ taulu }) {
                       <div className="row-cell-wrap">
                         {s.tietotyyppi === "viittaus"
                           ? <span className="cell-ref">{soluArvo(rivi, s)}</span>
+                          : s.tietotyyppi === "richtext"
+                          ? <RichtextSolu rivi={rivi} sarake={s} />
                           : <span className="cell-text">{soluArvo(rivi, s)}</span>}
                       </div>
                     </td>
